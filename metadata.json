@@ -1,0 +1,6 @@
+{
+  "name": "BizNaija",
+  "description": "A modern African SME management platform for local artisans and wholesalers to digitize inventory and manage sales with a clean, professional aesthetic.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

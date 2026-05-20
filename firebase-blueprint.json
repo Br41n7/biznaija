@@ -1,0 +1,102 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Store information about the artisan/business owner.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "businessName": { "type": "string" },
+        "businessType": { "type": "string" },
+        "languagePreference": { "type": "string", "enum": ["English", "Yoruba", "Pidgin"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "businessName"]
+    },
+    "Product": {
+      "title": "Shop Product",
+      "description": "An item for sale by a business owner.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "sellerId": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "price": { "type": "number" },
+        "stockQuantity": { "type": "number" },
+        "cartonSize": { "type": "number", "description": "Number of packs/items in a carton" },
+        "packSize": { "type": "number", "description": "Number of items in a pack" },
+        "imageUrl": { "type": "string" },
+        "hashtags": { "type": "array", "items": { "type": "string" } },
+        "marketingCaption": { "type": "string" },
+        "category": { "type": "string" },
+        "lowStockThreshold": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["sellerId", "name", "price", "stockQuantity"]
+    },
+    "Sale": {
+      "title": "Sales Record",
+      "description": "Historical record of a completed sale.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "sellerId": { "type": "string" },
+        "productId": { "type": "string" },
+        "quantity": { "type": "number" },
+        "unitType": { "type": "string", "enum": ["item", "pack", "carton"] },
+        "totalAmount": { "type": "number" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["sellerId", "productId", "quantity", "totalAmount", "timestamp"]
+    },
+    "Order": {
+      "title": "Customer Order",
+      "description": "An order placed by a customer or recorded manually.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "sellerId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "customerPhone": { "type": "string" },
+        "items": { 
+          "type": "array", 
+          "items": {
+            "type": "object",
+            "properties": {
+              "productId": { "type": "string" },
+              "quantity": { "type": "number" },
+              "price": { "type": "number" },
+              "unitType": { "type": "string" }
+            }
+          }
+        },
+        "totalAmount": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "completed", "cancelled"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["sellerId", "items", "totalAmount", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Individual user settings and info."
+    },
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Global inventory of all products."
+    },
+    "/sales/{saleId}": {
+      "schema": "Sale",
+      "description": "All sales transactions."
+    },
+    "/orders/{orderId}": {
+      "schema": "Order",
+      "description": "All customer orders."
+    }
+  }
+}

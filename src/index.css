@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand-primary: #3ecf8e; /* Supabase Green */
+  --color-brand-secondary: #1c1c1c; /* Dark Gray */
+  --color-brand-secondary-dark: #000000; /* Pure Black */
+  --color-brand-secondary-hover: #2e2e2e; /* Slate Gray */
+  --color-brand-bg: #121212; /* Very Dark Gray */
+  --color-brand-border: #2e2e2e; /* Muted Dark Border */
+  --color-brand-danger: #ea4335; /* Google/Standard Red */
+  --color-brand-warning: #f4b400; /* Google/Standard Yellow */
+  
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Inter", "Outfit", sans-serif;
+  --font-mono: "JetBrains Mono", "Roboto Mono", monospace;
+}
+
+@layer base {
+  body {
+    @apply bg-brand-bg text-[#ededed] font-sans antialiased;
+  }
+}
+
+.SupabaseGrid {
+  background-size: 40px 40px;
+  background-image: linear-gradient(to right, #1c1c1c 1px, transparent 1px), linear-gradient(to bottom, #1c1c1c 1px, transparent 1px);
+}
+
+.GlassCard {
+  @apply bg-[#1c1c1c] border border-brand-border rounded-xl shadow-lg;
+}
+
+.AfricanPattern {
+  background-image: 
+    radial-gradient(circle at 10% 20%, rgba(62, 207, 142, 0.1) 0%, transparent 10%),
+    radial-gradient(circle at 90% 80%, rgba(62, 207, 142, 0.1) 0%, transparent 10%),
+    linear-gradient(45deg, rgba(62, 207, 142, 0.05) 25%, transparent 25%, transparent 50%, rgba(62, 207, 142, 0.05) 50%, rgba(62, 207, 142, 0.05) 75%, transparent 75%, transparent);
+  background-size: 100px 100px;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #2e2e2e;
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #3e3e3e;
+}
+

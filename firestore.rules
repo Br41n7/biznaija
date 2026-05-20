@@ -1,0 +1,61 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isDataOwner(data) {
+      return isSignedIn() && request.auth.uid == data.sellerId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // --- Users ---
+    match /users/{userId} {
+      allow get: if true; // Public can see business info
+      allow create: if isOwner(userId) && 
+        request.resource.data.keys().hasAll(['uid', 'email', 'businessName']) &&
+        request.resource.data.uid == userId;
+      allow update: if isOwner(userId) && 
+        request.resource.data.uid == userId;
+    }
+
+    // --- Products ---
+    match /products/{productId} {
+      allow list: if true; // Public store access
+      allow get: if true; // Public store access
+      allow create: if isSignedIn() && request.resource.data.sellerId == request.auth.uid;
+      allow update, delete: if isSignedIn() && resource.data.sellerId == request.auth.uid;
+    }
+
+    // --- Sales ---
+    match /sales/{saleId} {
+      allow list: if isSignedIn() && resource.data.sellerId == request.auth.uid;
+      allow get: if isSignedIn() && resource.data.sellerId == request.auth.uid;
+      allow create: if isSignedIn() && request.resource.data.sellerId == request.auth.uid;
+      allow update, delete: if false; // Sales are immutable records
+    }
+
+    // --- Orders ---
+    match /orders/{orderId} {
+      allow list: if isSignedIn() && resource.data.sellerId == request.auth.uid;
+      allow get: if true; // Customer might want to view order status
+      allow create: if true; // Anyone can place an order? Or maybe just signed in users if it's B2B
+      allow update: if isSignedIn() && resource.data.sellerId == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.sellerId == request.auth.uid;
+    }
+  }
+}
