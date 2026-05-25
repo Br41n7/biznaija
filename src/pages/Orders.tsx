@@ -52,9 +52,16 @@ export default function Orders() {
   const fetchOrders = async () => {
     if (!auth.currentUser) return;
     try {
-      const q = query(collection(db, 'orders'), where('sellerId', '==', auth.currentUser.uid), orderBy('createdAt', 'desc'));
+      const q = query(collection(db, 'orders'), where('sellerId', '==', auth.currentUser.uid));
       const snap = await getDocs(q);
-      setOrders(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order)));
+      const fetchedOrders = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
+      // Sort in-memory to prevent missing composite index errors
+      fetchedOrders.sort((a, b) => {
+        const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return dateB - dateA;
+      });
+      setOrders(fetchedOrders);
     } catch (error) {
       console.error(error);
     } finally {

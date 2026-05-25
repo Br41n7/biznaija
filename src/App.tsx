@@ -14,7 +14,8 @@ import {
   Menu,
   X,
   Plus,
-  Search
+  Search,
+  TrendingUp
 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
@@ -27,6 +28,7 @@ import StoreBuilderPage from './pages/StoreBuilder';
 import OrdersPage from './pages/Orders';
 import AuthPage from './pages/Auth';
 import PublicStorePage from './pages/PublicStore';
+import TransactionsPage from './pages/Transactions';
 
 const Sidebar = ({ isOpen, toggle, user }: { isOpen: boolean; toggle: () => void; user: User | null }) => {
   const location = useLocation();
@@ -42,6 +44,7 @@ const Sidebar = ({ isOpen, toggle, user }: { isOpen: boolean; toggle: () => void
     { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
     { name: 'Inventory', path: '/inventory', icon: Package },
     { name: 'Orders', path: '/orders', icon: ShoppingCart },
+    { name: 'Finances', path: '/finances', icon: TrendingUp },
     { name: 'Store Builder', path: '/store-builder', icon: Store },
   ];
 
@@ -173,6 +176,7 @@ const MainLayout = ({ user, isSidebarOpen, setSidebarOpen }: { user: User; isSid
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/inventory" element={<InventoryPage />} />
             <Route path="/orders" element={<OrdersPage />} />
+            <Route path="/finances" element={<TransactionsPage />} />
             <Route path="/store-builder" element={<StoreBuilderPage />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
@@ -184,6 +188,7 @@ const MainLayout = ({ user, isSidebarOpen, setSidebarOpen }: { user: User; isSid
             { path: '/dashboard', icon: LayoutDashboard, name: 'Home' },
             { path: '/inventory', icon: Package, name: 'Stock' },
             { path: '/orders', icon: ShoppingCart, name: 'Sales' },
+            { path: '/finances', icon: TrendingUp, name: 'Finance' },
             { path: '/store-builder', icon: Store, name: 'Build' },
           ].map((item) => {
             const Icon = item.icon;

@@ -1,61 +1,109 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Default deny
+    // 1. Global Safety Net
     match /{document=**} {
       allow read, write: if false;
     }
 
-    // Helper functions
+    // --- Hardened Primitives ---
     function isSignedIn() {
       return request.auth != null;
     }
-    
+
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
-    }
-
-    function isDataOwner(data) {
-      return isSignedIn() && request.auth.uid == data.sellerId;
     }
 
     function isValidId(id) {
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
-    // --- Users ---
-    match /users/{userId} {
-      allow get: if true; // Public can see business info
-      allow create: if isOwner(userId) && 
-        request.resource.data.keys().hasAll(['uid', 'email', 'businessName']) &&
-        request.resource.data.uid == userId;
-      allow update: if isOwner(userId) && 
-        request.resource.data.uid == userId;
+    function getExistingUserData(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data;
     }
 
-    // --- Products ---
+    function isVerifiedUser(uid) {
+      return isSignedIn() && 
+        exists(/databases/$(database)/documents/users/$(uid)) && 
+        getExistingUserData(uid).isVerified == true;
+    }
+
+    // --- Validation Blueprints ---
+    function isValidUser(data) {
+      return data.uid is string && data.uid.size() <= 128 &&
+             data.email is string && data.email.size() <= 200 &&
+             data.businessName is string && data.businessName.size() <= 200;
+    }
+
+    function isValidProduct(data) {
+      return data.sellerId is string && data.sellerId.size() <= 128 &&
+             data.name is string && data.name.size() <= 100 &&
+             data.price is number && data.price >= 0 &&
+             data.stockQuantity is number && data.stockQuantity >= 0;
+    }
+
+    // --- Users Collection ---
+    match /users/{userId} {
+      allow get: if true; // Public can see business info
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) &&
+        request.resource.data.uid == userId;
+      
+      // Prevent identity spoofing and self-assigned verification status via Client SDK
+      allow update: if isOwner(userId) && 
+        request.resource.data.uid == userId &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isVerified', 'verificationType', 'verificationDate']);
+    }
+
+    // --- Products Collection ---
     match /products/{productId} {
       allow list: if true; // Public store access
       allow get: if true; // Public store access
-      allow create: if isSignedIn() && request.resource.data.sellerId == request.auth.uid;
-      allow update, delete: if isSignedIn() && resource.data.sellerId == request.auth.uid;
+      
+      // Gated by Smile ID active biometric verification status
+      allow create: if isVerifiedUser(request.auth.uid) && 
+        request.resource.data.sellerId == request.auth.uid &&
+        isValidProduct(request.resource.data);
+        
+      allow update: if isVerifiedUser(request.auth.uid) && 
+        resource.data.sellerId == request.auth.uid &&
+        request.resource.data.sellerId == request.auth.uid &&
+        isValidProduct(request.resource.data);
+
+      allow delete: if isSignedIn() && resource.data.sellerId == request.auth.uid;
     }
 
-    // --- Sales ---
+    // --- Sales Collection ---
     match /sales/{saleId} {
       allow list: if isSignedIn() && resource.data.sellerId == request.auth.uid;
       allow get: if isSignedIn() && resource.data.sellerId == request.auth.uid;
       allow create: if isSignedIn() && request.resource.data.sellerId == request.auth.uid;
-      allow update, delete: if false; // Sales are immutable records
+      allow update, delete: if false; // Immutable sales ledger
     }
 
-    // --- Orders ---
+    // --- Orders Collection ---
     match /orders/{orderId} {
       allow list: if isSignedIn() && resource.data.sellerId == request.auth.uid;
-      allow get: if true; // Customer might want to view order status
-      allow create: if true; // Anyone can place an order? Or maybe just signed in users if it's B2B
+      allow get: if true; // Customer can view order tracking status
+      allow create: if true; // Anyone can submit an order item
       allow update: if isSignedIn() && resource.data.sellerId == request.auth.uid;
       allow delete: if isSignedIn() && resource.data.sellerId == request.auth.uid;
+    }
+
+    // --- Expenses Collection ---
+    match /expenses/{expenseId} {
+      allow list: if isSignedIn() && resource.data.sellerId == request.auth.uid;
+      allow get: if isSignedIn() && resource.data.sellerId == request.auth.uid;
+      allow create: if isSignedIn() && request.resource.data.sellerId == request.auth.uid;
+      allow update, delete: if isSignedIn() && resource.data.sellerId == request.auth.uid;
+    }
+
+    // --- Stock Outgoing Collection ---
+    match /stock_outgoing/{outgoingId} {
+      allow list: if isSignedIn() && resource.data.sellerId == request.auth.uid;
+      allow get: if isSignedIn() && resource.data.sellerId == request.auth.uid;
+      allow create: if isSignedIn() && request.resource.data.sellerId == request.auth.uid;
+      allow update, delete: if isSignedIn() && resource.data.sellerId == request.auth.uid;
     }
   }
 }

@@ -79,6 +79,39 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["sellerId", "items", "totalAmount", "status", "createdAt"]
+    },
+    "Expense": {
+      "title": "Business Expense",
+      "description": "Record of operational costs like transport, rent, utilities, raw materials.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "sellerId": { "type": "string" },
+        "title": { "type": "string" },
+        "category": { "type": "string", "enum": ["Raw Materials", "Transport", "Rent", "Utilities", "Salaries", "Other"] },
+        "amount": { "type": "number" },
+        "description": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["sellerId", "title", "category", "amount", "date"]
+    },
+    "StockOutgoing": {
+      "title": "Stock Outgoing Log",
+      "description": "Record of inventory reduction other than standard sales (damages, wastage, samples, personal use).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "sellerId": { "type": "string" },
+        "productId": { "type": "string" },
+        "productName": { "type": "string" },
+        "quantity": { "type": "number" },
+        "reason": { "type": "string", "enum": ["damaged", "wastage", "sample", "personal_use", "expired", "other"] },
+        "description": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["sellerId", "productId", "productName", "quantity", "reason", "date"]
     }
   },
   "firestore": {
@@ -97,6 +130,14 @@
     "/orders/{orderId}": {
       "schema": "Order",
       "description": "All customer orders."
+    },
+    "/expenses/{expenseId}": {
+      "schema": "Expense",
+      "description": "All logged expenses."
+    },
+    "/stock_outgoing/{outgoingId}": {
+      "schema": "StockOutgoing",
+      "description": "Inventory reduction logs not matching sales."
     }
   }
 }

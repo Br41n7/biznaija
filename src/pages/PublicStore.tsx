@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { db } from '../lib/firebase';
+import { db, logSafeAnalyticsEvent } from '../lib/firebase';
 import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { motion } from 'motion/react';
 import { 
@@ -20,6 +20,7 @@ export default function PublicStore() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [sellerName, setSellerName] = useState('BizNaija Shop');
+  const [sellerPhone, setSellerPhone] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchStoreData = async () => {
@@ -29,18 +30,30 @@ export default function PublicStore() {
         const userRef = doc(db, 'users', userId);
         const userSnap = await getDoc(userRef);
         if (userSnap.exists()) {
-          setSellerName(userSnap.data().businessName || "BizNaija Shop");
+          const userData = userSnap.data();
+          setSellerName(userData.businessName || "BizNaija Shop");
+          setSellerPhone(userData.phoneNumber || null);
         }
         
         // Fetch Products
         const q = query(
           collection(db, 'products'), 
-          where('sellerId', '==', userId),
-          where('isVisible', '==', true)
+          where('sellerId', '==', userId)
         );
         const snap = await getDocs(q);
-        const prods = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+        const prods = snap.docs
+          .map(doc => ({ id: doc.id, ...doc.data() } as Product))
+          .filter(p => p.isVisible !== false);
         setProducts(prods);
+
+        // Security Guard: Log safe analytics action with full PII scrubbing
+        if (prods.length > 0) {
+          logSafeAnalyticsEvent('view_item_list', {
+            sellerName: userSnap.exists() ? userSnap.data().businessName : 'Unknown',
+            itemCount: prods.length,
+            categories: [...new Set(prods.map(p => p.category))]
+          });
+        }
       } catch (error) {
         console.error("Error fetching public store:", error);
         toast.error("Storefront offline");
@@ -53,10 +66,23 @@ export default function PublicStore() {
   }, [userId]);
 
   const handleWhatsAppOrder = (product: Product) => {
+    // Security Guard: Log purchase inquiry attempt with sanitization
+    logSafeAnalyticsEvent('begin_checkout', {
+      itemId: product.id,
+      itemName: product.name,
+      value: product.price,
+      currency: 'NGN',
+      category: product.category
+    });
+
     const storeLink = window.location.href;
-    const message = `Bọlẹ o! \n\nI'm interested in: *${product.name}*\nPrice: ${formatCurrency(product.price)}\n\nSeen on your BizNaija store: ${storeLink}`;
+    const message = `Pẹlẹ o! \n\nI'm interested in: *${product.name}*\nPrice: ${formatCurrency(product.price)}\n\nSeen on your BizNaija store: ${storeLink}`;
     const encoded = encodeURIComponent(message);
-    window.open(`https://wa.me/?text=${encoded}`, '_blank');
+    const cleanedPhone = sellerPhone ? sellerPhone.replace(/[\s\-\+\(\)]/g, '') : '';
+    const whatsappUrl = cleanedPhone 
+      ? `https://wa.me/${cleanedPhone}?text=${encoded}` 
+      : `https://wa.me/?text=${encoded}`;
+    window.open(whatsappUrl, '_blank');
   };
 
   const shareStore = () => {

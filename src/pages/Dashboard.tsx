@@ -7,7 +7,10 @@ import {
   getDocs, 
   orderBy, 
   limit,
-  Timestamp 
+  Timestamp,
+  doc,
+  getDoc,
+  updateDoc
 } from 'firebase/firestore';
 import { 
   TrendingUp, 
@@ -20,7 +23,9 @@ import {
   Share2,
   ExternalLink,
   MessageCircle,
-  QrCode
+  QrCode,
+  Settings,
+  X
 } from 'lucide-react';
 import { 
   AreaChart, 
@@ -49,6 +54,25 @@ export default function Dashboard() {
   const [insights, setInsights] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Profile Settings States & Verification Fields
+  const [userProfile, setUserProfile] = useState({
+    businessName: '',
+    phoneNumber: '',
+    businessType: 'General',
+    isVerified: false,
+    verificationType: ''
+  });
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
+
+  // Simulated KYC Verification State
+  const [isKycModalOpen, setIsKycModalOpen] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [kycForm, setKycForm] = useState({
+    docType: 'BVN',
+    docNumber: ''
+  });
+
   useEffect(() => {
     fetchDashboardData();
   }, []);
@@ -59,6 +83,24 @@ export default function Dashboard() {
     try {
       const sellerId = auth.currentUser.uid;
 
+      // User Profile details
+      try {
+        const userRef = doc(db, 'users', sellerId);
+        const userSnap = await getDoc(userRef);
+        if (userSnap.exists()) {
+          const uData = userSnap.data();
+          setUserProfile({
+            businessName: uData.businessName || '',
+            phoneNumber: uData.phoneNumber || '',
+            businessType: uData.businessType || 'General',
+            isVerified: uData.isVerified || false,
+            verificationType: uData.verificationType || ''
+          });
+        }
+      } catch (errProfile) {
+        console.warn("Could not load user profile:", errProfile);
+      }
+
       // Products
       const productsSnap = await getDocs(query(collection(db, 'products'), where('sellerId', '==', sellerId)));
       const products = productsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
@@ -66,11 +108,23 @@ export default function Dashboard() {
       // Sales
       const salesSnap = await getDocs(query(
         collection(db, 'sales'), 
-        where('sellerId', '==', sellerId),
-        orderBy('timestamp', 'desc'),
-        limit(50)
+        where('sellerId', '==', sellerId)
       ));
-      const sales = salesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Sale));
+      const salesRaw = salesSnap.docs.map(doc => {
+        const data = doc.data();
+        return { id: doc.id, ...data } as Sale;
+      });
+      // Sort in-memory to prevent missing composite index errors completely
+      salesRaw.sort((a, b) => {
+        const dateA = a.timestamp && typeof a.timestamp.toDate === 'function' 
+          ? a.timestamp.toDate().getTime() 
+          : a.timestamp ? new Date(a.timestamp).getTime() : 0;
+        const dateB = b.timestamp && typeof b.timestamp.toDate === 'function' 
+          ? b.timestamp.toDate().getTime() 
+          : b.timestamp ? new Date(b.timestamp).getTime() : 0;
+        return dateB - dateA;
+      });
+      const sales = salesRaw.slice(0, 50);
 
       // Insights with Caching
       const cachedInsights = localStorage.getItem(`biznaija_insights_${sellerId}`);
@@ -135,6 +189,64 @@ export default function Dashboard() {
     toast.success("Store link copied!");
   };
 
+  const handleSaveSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!auth.currentUser) return;
+    setSavingSettings(true);
+    try {
+      await updateDoc(doc(db, 'users', auth.currentUser.uid), {
+        businessName: userProfile.businessName,
+        phoneNumber: userProfile.phoneNumber,
+        businessType: userProfile.businessType,
+        updatedAt: new Date().toISOString()
+      });
+      toast.success('Settings updated successfully');
+      setIsSettingsOpen(false);
+      fetchDashboardData();
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to update settings');
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  const handleSimulateKYC = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!auth.currentUser) return;
+    if (!kycForm.docNumber) {
+      toast.error("Please enter your ID number.");
+      return;
+    }
+    setIsVerifying(true);
+    try {
+      // Direct post to secure container endpoint bypassing standard Firestore user limits
+      const res = await fetch("/api/verify-kyc", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: auth.currentUser.uid,
+          docType: kycForm.docType,
+          docNumber: kycForm.docNumber
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast.success(`Biometric Match Succeeded: Trusted Profile unlocked via ${kycForm.docType}`);
+        setIsKycModalOpen(false);
+        fetchDashboardData();
+      } else {
+        toast.error(data.error || "Verification failed");
+      }
+    } catch (err: any) {
+      console.error("KYC simulation error:", err);
+      toast.error("Network or verification request failed");
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
   const StatCard = ({ title, value, icon: Icon, trend, color }: any) => (
     <motion.div 
       whileHover={{ y: -2 }}
@@ -159,18 +271,62 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-7xl mx-auto">
-      <div className="flex justify-between items-end">
+      <div className="flex justify-between items-center sm:items-end gap-2">
         <div>
           <h2 className="text-3xl font-bold text-white tracking-tight">Dashboard</h2>
-          <p className="text-gray-500 font-medium text-sm">Real-time health of your business.</p>
+          <p className="text-gray-500 font-medium text-sm text-gray-400">Real-time trust analytics & business metrics.</p>
         </div>
-        <button 
-          onClick={fetchDashboardData}
-          className="bg-[#1c1c1c] border border-brand-border px-4 py-2 rounded-lg text-xs font-semibold text-white hover:bg-[#2e2e2e] transition-all"
-        >
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          {userProfile.isVerified ? (
+            <div className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-[0_0_15px_rgba(16,185,129,0.05)]">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span>Smile ID Verified ({userProfile.verificationType})</span>
+            </div>
+          ) : (
+            <button 
+              onClick={() => setIsKycModalOpen(true)}
+              className="bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 border border-amber-500/20 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all shadow-[0_0_15px_rgba(245,158,11,0.05)]"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+              <span>Pending Verify (Smile ID)</span>
+            </button>
+          )}
+          <button 
+            onClick={() => setIsSettingsOpen(true)}
+            className="bg-[#1c1c1c] border border-brand-border p-2 rounded-lg text-white hover:bg-[#2e2e2e] transition-all flex items-center justify-center gap-1.5 text-xs font-semibold px-3 py-2"
+            title="Business Settings"
+          >
+            <Settings size={14} className="text-brand-primary" />
+            <span className="hidden sm:inline">Settings</span>
+          </button>
+          <button 
+            onClick={fetchDashboardData}
+            className="bg-[#1c1c1c] border border-brand-border px-4 py-2 rounded-lg text-xs font-semibold text-white hover:bg-[#2e2e2e] transition-all"
+          >
+            Refresh
+          </button>
+        </div>
       </div>
+
+      {/* KYC Warning Banner */}
+      {!userProfile.isVerified && (
+        <div className="bg-amber-500/15 border border-amber-500/30 text-amber-200 p-5 rounded-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 animate-in slide-in-from-top-4 duration-300">
+          <div className="space-y-1 max-w-2xl">
+            <h4 className="font-bold text-amber-400 flex items-center gap-2 text-sm uppercase tracking-wider">
+              ⚠️ Biometric KYC Verification Required (Smile ID integration)
+            </h4>
+            <p className="text-xs text-amber-200/80 leading-relaxed">
+              Your account is currently in <strong>Stage 1 (Unverified)</strong>. You can browse statistics and configure setup, but to establish local trust and protect consumers, listing active product stock is locked until biometric verification completes.
+            </p>
+          </div>
+          <button 
+            onClick={() => setIsKycModalOpen(true)}
+            className="bg-amber-500 text-black px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-widest hover:brightness-110 transition-all shadow-[0_0_15px_rgba(245,158,11,0.15)] flex-shrink-0"
+          >
+            Verify Biz with Smile ID
+          </button>
+        </div>
+      )}
 
       {/* Highlights Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -330,6 +486,158 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* Settings Modal */}
+      {isSettingsOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+          <div className="GlassCard w-full max-w-md bg-[#1c1c1c] overflow-hidden border border-brand-border">
+            <div className="flex justify-between items-center p-6 border-b border-brand-border">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <Settings size={18} className="text-brand-primary" />
+                Business Settings
+              </h3>
+              <button 
+                onClick={() => setIsSettingsOpen(false)}
+                className="text-gray-500 hover:text-white transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <form onSubmit={handleSaveSettings} className="p-6 space-y-4">
+              <div>
+                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-1.5 px-1">Business Name</label>
+                <input
+                  type="text"
+                  required
+                  value={userProfile.businessName}
+                  onChange={(e) => setUserProfile({...userProfile, businessName: e.target.value})}
+                  className="w-full px-3 py-2 bg-[#111111] border border-brand-border rounded-md focus:ring-1 focus:ring-brand-primary outline-none text-white text-sm font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-1.5 px-1">WhatsApp Phone Number</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. +2348012345678"
+                  value={userProfile.phoneNumber}
+                  onChange={(e) => setUserProfile({...userProfile, phoneNumber: e.target.value})}
+                  className="w-full px-3 py-2 bg-[#111111] border border-brand-border rounded-md focus:ring-1 focus:ring-brand-primary outline-none text-white text-sm font-medium"
+                  title="Include country code (e.g., +234 for Nigeria)"
+                />
+                <p className="text-[10px] text-gray-600 mt-1 px-1">Used to receive instant order inquiries from public customers.</p>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-1.5 px-1">Business Type</label>
+                <select
+                  value={userProfile.businessType}
+                  onChange={(e) => setUserProfile({...userProfile, businessType: e.target.value})}
+                  className="w-full px-3 py-2 bg-[#111111] border border-brand-border rounded-md outline-none text-white text-sm font-medium"
+                >
+                  <option value="General">General Trade</option>
+                  <option value="Fashion">Fashion & Textiles</option>
+                  <option value="Food & Drinks">Food & Restaurants</option>
+                  <option value="Arts & Crafts">Arts & Handmade Crafts</option>
+                  <option value="Cosmetics">Cosmetics & Beauty</option>
+                </select>
+              </div>
+
+              <div className="flex gap-3 pt-4 border-t border-[#2e2e2e]">
+                <button
+                  type="button"
+                  onClick={() => setIsSettingsOpen(false)}
+                  className="flex-1 py-2 bg-transparent text-gray-400 hover:text-white border border-brand-border hover:bg-[#252525] rounded-md font-bold text-xs uppercase tracking-widest transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingSettings}
+                  className="flex-1 py-2 bg-brand-primary text-black rounded-md font-bold text-xs uppercase tracking-widest hover:brightness-110 transition-all flex items-center justify-center gap-2"
+                >
+                  {savingSettings ? "Saving..." : "Save Settings"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Smile ID Verification Modal */}
+      {isKycModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+          <div className="GlassCard w-full max-w-md bg-[#1c1c1c] overflow-hidden border border-brand-border">
+            <div className="flex justify-between items-center p-6 border-b border-brand-border">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <Users size={18} className="text-brand-primary" />
+                Smile ID KYC Onboarding
+              </h3>
+              <button 
+                onClick={() => setIsKycModalOpen(false)}
+                className="text-gray-500 hover:text-white transition-colors"
+                disabled={isVerifying}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            
+            <form onSubmit={handleSimulateKYC} className="p-6 space-y-4">
+              <div className="bg-[#111111] border border-brand-border/50 p-4 rounded-lg text-xs leading-relaxed text-gray-400 space-y-2">
+                <span className="font-bold text-[#ededed] block">Smile ID Sandbox Environment</span>
+                <p>This mimics a full secure biometric handshake. Smile ID matches user inputs with central government registry databases (BVN, NIN, or CAC), computes a confidence score, and returns an authenticated webhook payload to lock trusted identities.</p>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1.5 px-1">Verification Document Type</label>
+                <select
+                  disabled={isVerifying}
+                  value={kycForm.docType}
+                  onChange={(e) => setKycForm({...kycForm, docType: e.target.value})}
+                  className="w-full px-3 py-2 bg-[#111111] border border-brand-border rounded-md outline-none text-white text-sm font-medium"
+                >
+                  <option value="BVN">BVN (Bank Verification Number)</option>
+                  <option value="NIN">NIN (National Identification Number)</option>
+                  <option value="CAC">CAC (Corporate Affairs Commission ID)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1.5 px-1">Document Identity Number</label>
+                <input
+                  type="text"
+                  required
+                  disabled={isVerifying}
+                  placeholder={kycForm.docType === 'CAC' ? 'e.g., RC1234567' : 'e.g., 22289401736'}
+                  value={kycForm.docNumber}
+                  onChange={(e) => setKycForm({...kycForm, docNumber: e.target.value})}
+                  className="w-full px-3 py-2 bg-[#111111] border border-brand-border rounded-md focus:ring-1 focus:ring-brand-primary outline-none text-white text-sm font-medium"
+                />
+                <p className="text-[10px] text-gray-600 mt-1 px-1">Ensure it is at least 10 numbers long for biometric validation.</p>
+              </div>
+
+              <div className="flex gap-3 pt-4 border-t border-[#2e2e2e]">
+                <button
+                  type="button"
+                  disabled={isVerifying}
+                  onClick={() => setIsKycModalOpen(false)}
+                  className="flex-1 py-2 bg-transparent text-gray-400 hover:text-white border border-brand-border hover:bg-[#252525] rounded-md font-bold text-xs uppercase tracking-widest transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isVerifying}
+                  className="flex-1 py-2 bg-brand-primary text-black rounded-md font-bold text-xs uppercase tracking-widest hover:brightness-110 transition-all flex items-center justify-center gap-2"
+                >
+                  {isVerifying ? "Verifying..." : "Verify Identity"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
